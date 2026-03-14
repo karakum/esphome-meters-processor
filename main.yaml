@@ -1,0 +1,450 @@
+esphome:
+  name: "counters"
+  friendly_name: "Приборы учёта"
+  area: "Приборы учёта"
+
+  devices:
+    - id: energy_meter
+      name: energy_meter
+      area_id: area_counters
+    - id: water_meter
+      name: water_meter
+      area_id: area_counters
+    - id: kitchen_water
+      name: kitchen_water
+      area_id: area_counters
+    - id: indication
+      name: indication
+      area_id: area_counters
+    - id: indication25
+      name: indication25
+      area_id: area_counters
+    - id: last_day
+      name: last_day
+      area_id: area_counters
+    - id: last_hour
+      name: last_hour
+      area_id: area_counters
+
+  areas:
+    - id: area_counters
+      name: "Приборы учёта"
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+ethernet:
+  type: LAN8720
+  mdc_pin: GPIO23
+  mdio_pin: GPIO18
+  clk:
+    mode: CLK_EXT_IN
+    pin: 0
+  phy_addr: 1
+  power_pin: GPIO16
+
+logger:
+
+api:
+  reboot_timeout:
+    seconds: 0
+  encryption:
+    key: !secret counters_hass_token
+
+ota:
+  - platform: esphome
+    password: !secret counters_ota_password
+
+web_server:
+  port: 80
+
+time:
+  - platform: sntp
+    id: time_id
+
+uart:
+  id: uart_
+  rx_pin: GPIO5
+  tx_pin: GPIO17
+  baud_rate: 9600
+
+external_components:
+  - source: github://karakum/esphome-meters-processor
+#  - source:
+#      type: local
+#      path: components
+    components: [iec61107, pulsarm, counters_processor]
+
+counters_processor:
+  uart_id: uart_
+  id: counters_processor1
+
+iec61107:
+  id: energy_device
+  address: !secret energy_meter_address
+  is_enable: !lambda return id(iec61107_active).state;
+  day: 25
+  baud_rate: 9600
+  parity: EVEN
+  data_bits: 7
+  stop_bits: 1
+
+pulsarm:
+  id: water_device
+  address: !secret water_meter_address
+  is_enable: !lambda return id(pulsarm_active).state;
+  day: 25
+  baud_rate: 9600
+  parity: NONE
+  data_bits: 8
+  stop_bits: 1
+
+button:
+  - platform: template
+    id: refresh
+    name: "refresh"
+    entity_category: diagnostic
+    on_press:
+      then:
+        - lambda: id(counters_processor1).send();
+  - platform: template
+    id: pulsarm_sync_time
+    name: "sync_time"
+    device_id: water_meter
+    entity_category: config
+    on_press:
+      then:
+        - lambda: id(water_device).set_device_datetime();
+
+switch:
+  - platform: template
+    id: iec61107_active
+    name: "energy_meter_active"
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    optimistic: true
+  - platform: template
+    id: pulsarm_active
+    name: "water_meter_active"
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    optimistic: true
+
+binary_sensor:
+  - platform: iec61107
+    connection:
+      id: energy_connection
+      name: "connection"
+      device_id: energy_meter
+  - platform: pulsarm
+    connection:
+      id: water_connection
+      name: "connection"
+      device_id: water_meter
+
+text_sensor:
+  - platform: iec61107
+    serial_number:
+      id: energy_serial_number
+      name: "serial_number"
+      device_id: energy_meter
+    state_flags:
+      id: energy_state_flags
+      name: "state_flags"
+      device_id: energy_meter
+    datetime:
+      id: energy_datetime
+      name: "datetime"
+      device_id: energy_meter
+    date_indication:
+      id: energy_date_indication
+      name: "energy_date_indication"
+      device_id: indication25
+  - platform: pulsarm
+    datetime:
+      id: water_datetime
+      name: "datetime"
+      device_id: water_meter
+    date_indication:
+      id: water_date_indication
+      name: "water_date_indication"
+      device_id: indication25
+
+sensor:
+  - platform: iec61107
+    datetime_diff:
+      id: energy_datetime_diff
+      name: "datetime_diff"
+      device_id: energy_meter
+    tariff_zones:
+      - iec61107_zone: 0
+        id: energy_total
+        device_id: indication
+        name: "electroenergy"
+        device_class: "energy"
+        state_class: "total_increasing"
+        unit_of_measurement: "kWh"
+        accuracy_decimals: 2
+    tariff_zones_indi:
+      - iec61107_zone: 0
+        id: energy_indi
+        device_id: indication25
+        name: "electroenergy"
+        device_class: "energy"
+        unit_of_measurement: "kWh"
+        accuracy_decimals: 2
+    volume_last_day:
+      - iec61107_zone: 0
+        id: energy_last_day
+        device_id: last_day
+        name: "electroenergy"
+        device_class: "energy"
+        unit_of_measurement: "kWh"
+        accuracy_decimals: 2
+    volume_last_hour:
+      - iec61107_zone: 0
+        id: energy_last_hour
+        device_id: last_hour
+        name: "electroenergy"
+        device_class: "energy"
+        unit_of_measurement: "kWh"
+        accuracy_decimals: 2
+
+    metrics:
+      - iec61107_metric: CURRE
+        id: energy_metric_current
+        device_id: energy_meter
+        name: "current"
+        device_class: "current"
+        state_class: "measurement"
+        unit_of_measurement: "A"
+        accuracy_decimals: 3
+      - iec61107_metric: POWEP
+        id: energy_metric_power
+        device_id: energy_meter
+        name: "power"
+        device_class: "power"
+        state_class: "measurement"
+        unit_of_measurement: "kW"
+        accuracy_decimals: 6
+      - iec61107_metric: VOLTA
+        id: energy_metric_volage
+        device_id: energy_meter
+        name: "voltage"
+        device_class: "voltage"
+        state_class: "measurement"
+        unit_of_measurement: "V"
+        accuracy_decimals: 2
+  - platform: pulsarm
+    datetime_diff:
+      id: water_datetime_diff
+      name: "datetime_diff"
+      device_id: water_meter
+    channels:
+      - pulsarm_channel: 1
+        id: water_ch1_total
+        device_id: indication
+        name: "ch1_bathroom_cold"
+        device_class: "water"
+        state_class: "total_increasing"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+      - pulsarm_channel: 2
+        id: water_ch2_total
+        device_id: indication
+        name: "ch2_bathroom_hot"
+        device_class: "water"
+        state_class: "total_increasing"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+      - pulsarm_channel: 3
+        id: water_ch3_total
+        device_id: indication
+        name: "ch3_toilet_cold"
+        device_class: "water"
+        state_class: "total_increasing"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+      - pulsarm_channel: 4
+        id: water_ch4_total
+        device_id: indication
+        name: "ch4_toilet_hot"
+        device_class: "water"
+        state_class: "total_increasing"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+      - pulsarm_channel: 5
+        id: water_ch5_total
+        device_id: indication
+        name: "ch5_shower_cold"
+        device_class: "water"
+        state_class: "total_increasing"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+      - pulsarm_channel: 6
+        id: water_ch6_total
+        device_id: indication
+        name: "ch6_shower_hot"
+        device_class: "water"
+        state_class: "total_increasing"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+
+      - pulsarm_channel: 7
+        id: water_ch7_total
+        device_id: kitchen_water
+        name: "ch7_washing"
+        device_class: "water"
+        state_class: "total_increasing"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+      - pulsarm_channel: 8
+        id: water_ch8_total
+        device_id: kitchen_water
+        name: "ch8_dishwash"
+        device_class: "water"
+        state_class: "total_increasing"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+      - pulsarm_channel: 9
+        id: water_ch9_total
+        device_id: kitchen_water
+        name: "ch9_filter"
+        device_class: "water"
+        state_class: "total_increasing"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+
+    channels_indi:
+      - pulsarm_channel: 1
+        id: water_ch1_indi
+        device_id: indication25
+        name: "ch1_bathroom_cold"
+        device_class: "water"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+      - pulsarm_channel: 2
+        id: water_ch2_indi
+        device_id: indication25
+        name: "ch2_bathroom_hot"
+        device_class: "water"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+      - pulsarm_channel: 3
+        id: water_ch3_indi
+        device_id: indication25
+        name: "ch3_toilet_cold"
+        device_class: "water"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+      - pulsarm_channel: 4
+        id: water_ch4_indi
+        device_id: indication25
+        name: "ch4_toilet_hot"
+        device_class: "water"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+      - pulsarm_channel: 5
+        id: water_ch5_indi
+        device_id: indication25
+        name: "ch5_shower_cold"
+        device_class: "water"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+      - pulsarm_channel: 6
+        id: water_ch6_indi
+        device_id: indication25
+        name: "ch6_shower_hot"
+        device_class: "water"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+
+    volume_last_day:
+      - pulsarm_channel: 1
+        id: water_ch1_last_day
+        device_id: last_day
+        name: "ch1_bathroom_cold"
+        device_class: "water"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+      - pulsarm_channel: 2
+        id: water_ch2_last_day
+        device_id: last_day
+        name: "ch2_bathroom_hot"
+        device_class: "water"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+      - pulsarm_channel: 3
+        id: water_ch3_last_day
+        device_id: last_day
+        name: "ch3_toilet_cold"
+        device_class: "water"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+      - pulsarm_channel: 4
+        id: water_ch4_last_day
+        device_id: last_day
+        name: "ch4_toilet_hot"
+        device_class: "water"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+      - pulsarm_channel: 5
+        id: water_ch5_last_day
+        device_id: last_day
+        name: "ch5_shower_cold"
+        device_class: "water"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+      - pulsarm_channel: 6
+        id: water_ch6_last_day
+        device_id: last_day
+        name: "ch6_shower_hot"
+        device_class: "water"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+
+    volume_last_hour:
+      - pulsarm_channel: 1
+        id: water_ch1_last_hour
+        device_id: last_hour
+        name: "ch1_bathroom_cold"
+        device_class: "water"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+      - pulsarm_channel: 2
+        id: water_ch2_last_hour
+        device_id: last_hour
+        name: "ch2_bathroom_hot"
+        device_class: "water"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+      - pulsarm_channel: 3
+        id: water_ch3_last_hour
+        device_id: last_hour
+        name: "ch3_toilet_cold"
+        device_class: "water"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+      - pulsarm_channel: 4
+        id: water_ch4_last_hour
+        device_id: last_hour
+        name: "ch4_toilet_hot"
+        device_class: "water"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+      - pulsarm_channel: 5
+        id: water_ch5_last_hour
+        device_id: last_hour
+        name: "ch5_shower_cold"
+        device_class: "water"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2
+      - pulsarm_channel: 6
+        id: water_ch6_last_hour
+        device_id: last_hour
+        name: "ch6_shower_hot"
+        device_class: "water"
+        unit_of_measurement: "m³"
+        accuracy_decimals: 2

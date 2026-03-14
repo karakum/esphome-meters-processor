@@ -1,0 +1,8 @@
+CONF_PULSARM_ID = "pulsarm_id"
+CONF_PULSARM_CHANNEL = "pulsarm_channel"
+CONF_DATETIME_DIFF = "datetime_diff"
+CONF_IS_ENABLE = "is_enable"
+CONF_CHANNELS_INDI = "channels_indi"
+CONF_DATE_INDICATION = "date_indication"
+CONF_VOLUME_LAST_DAY = "volume_last_day"
+CONF_VOLUME_LAST_HOUR = "volume_last_hour"
