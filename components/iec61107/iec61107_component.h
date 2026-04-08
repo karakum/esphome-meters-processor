@@ -94,6 +94,8 @@ private:
 
   void do_find_device(uart::UARTDevice *serial, std::string &addr, int next_state);
 
+  void do_logout(uart::UARTDevice *serial, int next_state);
+
   void do_wait_ticks(int max_ticks, int next_state);
 
   void do_wait_device(uart::UARTDevice *serial, int next_state, bool warn_error);
@@ -104,14 +106,16 @@ private:
 
   void do_wait_programming_mode(uart::UARTDevice *serial, int next_state);
 
-  void do_get_param(uart::UARTDevice *serial, int next_state, std::string param, std::string arg = "");
+  void do_request(uart::UARTDevice *serial, int next_state, uint8_t op, std::string param, std::string arg = "");
 
   void do_wait_param_result(uart::UARTDevice *serial, const char *param_name, int next_state, int next_fail,
                             std::function<void(std::string data)> success_callback);
 
+  void do_wait_ack(uart::UARTDevice *serial, int next_state, int next_fail, std::function<void(bool)> callback);
+
   void log_string(uint8_t *bytes, int len, int width = 16);
 
-  std::vector<uint8_t> get_cmd_read_param(std::string param, std::string arg = "");
+  std::vector<uint8_t> get_cmd_op_param(uint8_t op, std::string param, std::string arg = "");
 
   uint8_t calc_bcc(std::vector<uint8_t> data);
 

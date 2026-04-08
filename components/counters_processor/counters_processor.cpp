@@ -11,7 +11,7 @@ void CountersProcessor::setup() {
 }
 
 void CountersProcessor::update() {
-  send();
+  //send();
 }
 
 void CountersProcessor::loop() {

@@ -27,6 +27,11 @@ public:
   void set_address(const std::string &address) { address_ = address; }
   std::string get_address() const { return address_; }
 
+  void set_password(const std::string &password) { password_ = password; }
+  std::string get_password() const { return password_; }
+
+  void sync_device_datetime() { set_time_ = true; };
+
   void set_indication_day(uint8_t d) { indication_day_ = d; }
 
   template<typename F> void set_is_enable_lambda(F &&f) { this->is_enable_f_.set(std::forward<F>(f)); }
@@ -78,8 +83,10 @@ protected:
   virtual bool process(uart::UARTDevice *) = 0;
 
   std::string address_{};
+  std::string password_{};
   TemplateLambda<bool> is_enable_f_;
   bool connected_{true};
+  bool set_time_{};
   uint32_t baud_rate_{0};
   uint8_t stop_bits_{0};
   uint8_t data_bits_{0};

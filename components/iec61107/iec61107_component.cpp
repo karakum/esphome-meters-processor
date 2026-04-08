@@ -12,6 +12,7 @@ static const char *TAG = "iec61107";
 const char *Iec61107Component::ws = " \t\n\r\f\v";
 
 void Iec61107Component::setup() {
+  set_time_ = false;
   connection_binary_sensor_->publish_state(connected_);
 }
 
@@ -33,8 +34,53 @@ bool Iec61107Component::process(uart::UARTDevice *serial) {
   } else if (state == 2) {
     do_wait_device(serial, 3, true);
   } else if (state == 3) {
-    do_select_mode(serial, 4, "050");
+    if (set_time_) {
+      set_time_ = false;
+      state = 4;
+    } else {
+      state = 19;
+    }
   } else if (state == 4) {
+    do_select_mode(serial, 5, "051");
+  } else if (state == 5) {
+    do_wait_programming_mode(serial, 6);
+  } else if (state == 6) {
+    do_request(serial, 7, 'P', "", get_password());
+  } else if (state == 7) {
+    do_wait_ack(serial, 8, 1, [this](bool ok) -> void {
+      if (ok) {
+        ESP_LOGI(TAG, "Auth with password success");
+      } else {
+        ESP_LOGE(TAG, "Auth with password failed");
+      }
+    });
+  } else if (state == 8) {
+    time_t now = ::time(nullptr);
+    auto t_now = ESPTime::from_epoch_local(now);
+    std::string dt = std::format(
+        "{:02}:{:02}:{:02},{:02}.{:02}.{:02}.{:02}",
+        t_now.hour,
+        t_now.minute,
+        t_now.second,
+        t_now.day_of_week - 1,
+        t_now.day_of_month,
+        t_now.month,
+        t_now.year - 2000
+        );
+    do_request(serial, 9, 'W', "WATCH", dt);
+  } else if (state == 9) {
+    do_wait_ack(serial, 10, 1, [this](bool ok) -> void {
+      if (ok) {
+        ESP_LOGI(TAG, "Device time sync success");
+      } else {
+        ESP_LOGE(TAG, "Device time sync failed");
+      }
+    });
+  } else if (state == 10) {
+    do_logout(serial, 1);
+  } else if (state == 19) {
+    do_select_mode(serial, 20, "050");
+  } else if (state == 20) {
     do_wait_reading_mode(serial, 21);
   } else if (state == 21) {
     do_find_device(serial, address_, 22);
@@ -45,7 +91,7 @@ bool Iec61107Component::process(uart::UARTDevice *serial) {
   } else if (state == 24) {
     do_wait_programming_mode(serial, 25);
   } else if (state == 25) {
-    do_get_param(serial, 26, "ET0PE");
+    do_request(serial, 26, 'R', "ET0PE");
   } else if (state == 26) {
     do_wait_param_result(serial, "ET0PE", 27, 99, [this](std::string data) -> void {
       std::vector<std::string> list;
@@ -89,7 +135,7 @@ bool Iec61107Component::process(uart::UARTDevice *serial) {
         static_cast<unsigned>(indication_prev_date_.month()),
         int(indication_prev_date_.year()) % 100
         );
-    do_get_param(serial, 29, "ENDPE", arg);
+    do_request(serial, 29, 'R', "ENDPE", arg);
   } else if (state == 29) {
     do_wait_param_result(serial, "ENDPE", 30, 99, [this](std::string data) -> void {
       std::vector<std::string> list;
@@ -116,7 +162,7 @@ bool Iec61107Component::process(uart::UARTDevice *serial) {
         static_cast<unsigned>(yesterday_.month()),
         int(yesterday_.year()) % 100
         );
-    do_get_param(serial, 31, "EADPE", arg);
+    do_request(serial, 31, 'R', "EADPE", arg);
   } else if (state == 31) {
     do_wait_param_result(serial, "EADPE", 100, 99, [this](std::string data) -> void {
       std::vector<std::string> list;
@@ -131,10 +177,7 @@ bool Iec61107Component::process(uart::UARTDevice *serial) {
     connected_ = false;
     connection_binary_sensor_->publish_state(connected_);
   } else if (state == 100) {
-    // logout
-    serial->write_array(std::vector<uint8_t>{SOH, 'B', '0', ETX, 0x75});
-    serial->flush();
-    state = 0;
+    do_logout(serial, 0);
     connected_ = true;
     connection_binary_sensor_->publish_state(connected_);
   }
@@ -152,6 +195,12 @@ void Iec61107Component::do_find_device(uart::UARTDevice *serial, std::string &ad
   std::string r = "/?" + addr + "!\r\n";
   serial->write_str(r.c_str());
   serial->flush();
+}
+
+void Iec61107Component::do_logout(uart::UARTDevice *serial, int next_state) {
+  serial->write_array(std::vector<uint8_t>{SOH, 'B', '0', ETX, 0x75});
+  serial->flush();
+  state = next_state;
 }
 
 void Iec61107Component::do_wait_device(uart::UARTDevice *serial, int next_state, bool warn_error) {
@@ -398,6 +447,29 @@ void Iec61107Component::do_wait_param_result(uart::UARTDevice *serial, const cha
   }
 }
 
+void Iec61107Component::do_wait_ack(uart::UARTDevice *serial, int next_state, int next_fail,
+                                    std::function<void(bool)> callback) {
+  no_data_ticks++;
+  if (no_data_ticks >= 50) {
+    ESP_LOGE(TAG, "No ACK within 50 ticks");
+    state = next_fail;
+  } else {
+    if (serial->available()) {
+      uint8_t b;
+      serial->read_byte(&b);
+      if (b == ACK) {
+        callback(true);
+        state = next_state;
+      } else {
+        ESP_LOGE(TAG, "Wrong ACK: 0x%02x", b);
+        callback(false);
+        state = next_fail;
+      }
+    }
+  }
+}
+
+
 void Iec61107Component::do_wait_ticks(int max_ticks, int next_state) {
   no_data_ticks++;
   if (no_data_ticks >= max_ticks) {
@@ -416,10 +488,11 @@ void Iec61107Component::do_select_mode(uart::UARTDevice *serial, int next_state,
   no_data_ticks = 0;
 }
 
-void Iec61107Component::do_get_param(uart::UARTDevice *serial, int next_state, std::string param, std::string arg) {
-  auto r = get_cmd_read_param(param, arg);
-  // ESP_LOGD(TAG, "REQUEST: %s(%s)", param.c_str(), arg.c_str());
-  // log_string(r.data(), r.size());
+void Iec61107Component::do_request(uart::UARTDevice *serial, int next_state, uint8_t op, std::string param,
+                                   std::string arg) {
+  auto r = get_cmd_op_param(op, param, arg);
+  ESP_LOGV(TAG, "REQUEST: %s(%s)", param.c_str(), arg.c_str());
+  log_string(r.data(), r.size());
   serial->write_array(r);
   serial->flush();
   read_bytes = 0;
@@ -427,11 +500,11 @@ void Iec61107Component::do_get_param(uart::UARTDevice *serial, int next_state, s
   state = next_state;
 }
 
-std::vector<uint8_t> Iec61107Component::get_cmd_read_param(std::string p, std::string arg) {
+std::vector<uint8_t> Iec61107Component::get_cmd_op_param(uint8_t op, std::string p, std::string arg) {
   std::string param = p + "(" + arg + ")";
   std::vector<uint8_t> data = std::vector<uint8_t>(4 + param.length());
   std::vector<uint8_t> res;
-  data[0] = 'R';
+  data[0] = op;
   data[1] = '1';
   data[2] = STX;
   std::copy(param.begin(), param.end(), data.begin() + 3);

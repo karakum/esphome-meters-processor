@@ -3,7 +3,7 @@ import esphome.config_validation as cv
 from esphome.components.uart import CONF_STOP_BITS, CONF_DATA_BITS, CONF_PARITY, UART_PARITY_OPTIONS
 from esphome.const import (
     CONF_ID,
-    CONF_ADDRESS, CONF_BAUD_RATE, CONF_DAY
+    CONF_ADDRESS, CONF_BAUD_RATE, CONF_DAY, CONF_PASSWORD
 )
 
 from .const import CONF_IEC61107_ID, CONF_IS_ENABLE
@@ -21,6 +21,7 @@ CONFIG_SCHEMA = (
             cv.GenerateID(): cv.declare_id(Iec61107Component),
             cv.GenerateID(CONF_PROCESSOR_ID): cv.use_id(CountersProcessor),
             cv.Required(CONF_ADDRESS): cv.string,
+            cv.Required(CONF_PASSWORD): cv.string,
             cv.Optional(CONF_IS_ENABLE): cv.returning_lambda,
             cv.Optional(CONF_DAY, default=25): cv.int_range(min=1, max=28),
             cv.Required(CONF_BAUD_RATE): cv.int_range(min=1),
@@ -41,6 +42,7 @@ async def to_code(config):
     await register_counter_device(var, config)
 
     cg.add(var.set_address(config[CONF_ADDRESS]))
+    cg.add(var.set_password(config[CONF_PASSWORD]))
 
     if CONF_IS_ENABLE in config:
         template_ = await cg.process_lambda(

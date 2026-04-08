@@ -27,8 +27,6 @@ public:
 
   void dump_config() override;
 
-  void set_device_datetime() { set_time = true; };
-
   std::string device_type() override { return "Pulsar M"; }
 
   void add_channel(u_int8_t ch, sensor::Sensor *sensor) { channels_.emplace_back(ch, sensor); }
@@ -93,7 +91,6 @@ private:
   int no_data_ticks{};
   int read_bytes{};
   int num_tries{};
-  bool set_time{};
   uint8_t buf[300];
   uint8_t current_channel_index{};
 };

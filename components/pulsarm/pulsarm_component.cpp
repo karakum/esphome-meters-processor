@@ -17,7 +17,7 @@ void PulsarMComponent::setup() {
   addr2 = (addr >> 8) & 0xFF;
   addr3 = (addr) & 0xFF;
   req = 0;
-  set_time = false;
+  set_time_ = false;
   connection_binary_sensor_->publish_state(connected_);
 }
 
@@ -36,8 +36,8 @@ void PulsarMComponent::uart_init(uart::UARTComponent *uart) {
 bool PulsarMComponent::process(uart::UARTDevice *serial) {
   if (state == 1) {
     while (serial->available()) { serial->read(); }
-    if (set_time) {
-      set_time = false;
+    if (set_time_) {
+      set_time_ = false;
       do_set_device_time(serial, 2);
     } else {
       state = 3;
