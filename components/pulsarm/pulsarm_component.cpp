@@ -1,6 +1,7 @@
 #include <format>
 #include <ctime>
 #include <chrono>
+#include "esphome/core/time.h"
 #include "esphome/core/log.h"
 #include "pulsarm_component.h"
 
@@ -53,32 +54,32 @@ bool PulsarMComponent::process(uart::UARTDevice *serial) {
     do_get_device_time(serial, 4);
   } else if (state == 4) {
     do_wait_response(serial, 5, [this](uint8_t *data, size_t len) -> void {
-      time_t now = time(0);
+      time_t now = ::time(nullptr);
 
-      struct tm tm_now;
-      struct tm tm_dev;
-      localtime_r(&now, &tm_now);
-      localtime_r(&now, &tm_dev);
+      auto t_now = ESPTime::from_epoch_local(now);
+      auto t_dev = ESPTime::from_epoch_local(now);
 
-      tm_dev.tm_year = data[0] + 2000 - 1900;
-      tm_dev.tm_mon = data[1] - 1;
-      tm_dev.tm_mday = data[2];
-      tm_dev.tm_hour = data[3];
-      tm_dev.tm_min = data[4];
-      tm_dev.tm_sec = data[5];
+      t_dev.year = data[0] + 2000;
+      t_dev.month = data[1];
+      t_dev.day_of_month = data[2];
+      t_dev.hour = data[3];
+      t_dev.minute = data[4];
+      t_dev.second = data[5];
+      t_dev.recalc_timestamp_local();
 
-      set_device_date(&tm_dev);
+      set_device_date(&t_dev);
 
-      time_t dev = mktime(&tm_dev);
-      int diff = now - dev;
+      int diff = t_now.timestamp - t_dev.timestamp;
 
       if (datetime_diff_sensor_) {
         datetime_diff_sensor_->publish_state(diff);
       }
       if (datetime_text_sensor_) {
-        char strftime_buf[30];
-        strftime(strftime_buf, sizeof(strftime_buf), "%Y-%m-%dT%H:%M:%S%z", &tm_dev);
-        datetime_text_sensor_->publish_state(strftime_buf);
+        auto dt = t_dev.strftime("%Y-%m-%dT%H:%M:%S");
+        auto sec = ESPTime::timezone_offset();
+        int h = sec / 3600;
+        int m = (sec % 3600) / 60;
+        datetime_text_sensor_->publish_state(std::format("{}{}{:02}{:02}", dt, sec >= 0 ? "+" : "-", h, m));
       }
     });
   } else if (state == 5) {
@@ -189,16 +190,15 @@ void PulsarMComponent::do_set_device_time(uart::UARTDevice *serial, int next_sta
   no_data_ticks = 0;
   read_bytes = 0;
   state = next_state;
-  struct tm tm_now;
   std::vector<uint8_t> data;
-  time_t now = time(0);
-  localtime_r(&now, &tm_now);
-  data.push_back(tm_now.tm_year - 100);
-  data.push_back(tm_now.tm_mon + 1);
-  data.push_back(tm_now.tm_mday);
-  data.push_back(tm_now.tm_hour);
-  data.push_back(tm_now.tm_min);
-  data.push_back(tm_now.tm_sec);
+  time_t now = ::time(nullptr);
+  auto t_now = ESPTime::from_epoch_local(now);
+  data.push_back(t_now.year - 2000);
+  data.push_back(t_now.month);
+  data.push_back(t_now.day_of_month);
+  data.push_back(t_now.hour);
+  data.push_back(t_now.minute);
+  data.push_back(t_now.second);
   std::vector<uint8_t> r = create_request(addr, 5, data);
   serial->write_array(r);
   serial->flush();

@@ -2,6 +2,7 @@
 
 #include <chrono>
 
+#include "esphome/core/time.h"
 #include "esphome/core/template_lambda.h"
 #include "esphome/components/uart/uart.h"
 
@@ -42,10 +43,10 @@ public:
   void set_baud_rate(uint32_t baud_rate) { baud_rate_ = baud_rate; }
   uint32_t get_baud_rate() const { return baud_rate_; }
 
-  void set_device_date(struct tm *tm_dev) {
-    uint16_t dev_year = tm_dev->tm_year + 1900;
-    uint8_t dev_mon = tm_dev->tm_mon + 1;
-    uint8_t dev_day = tm_dev->tm_mday;
+  void set_device_date(ESPTime *t_dev) {
+    uint16_t dev_year = t_dev->year;
+    uint8_t dev_mon = t_dev->month;
+    uint8_t dev_day = t_dev->day_of_month;
 
     uint8_t indi_day = indication_day_; // в истории показания "на начало суток"
     uint8_t indi_mon = dev_mon;
@@ -55,7 +56,7 @@ public:
       indi_year = dev_mon > 1 ? dev_year : dev_year - 1; // если сейчас январь, то предыдущий ГОД
     }
 
-    device_hour_ = tm_dev->tm_hour;
+    device_hour_ = t_dev->hour;
 
     std::chrono::sys_days sys_indi_date{std::chrono::month(indi_mon) / indi_day / indi_year};
     indication_date_ = sys_indi_date;

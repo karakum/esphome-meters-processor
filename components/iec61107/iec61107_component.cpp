@@ -2,6 +2,7 @@
 #include <ctime>
 #include <format>
 #include <chrono>
+#include "esphome/core/time.h"
 #include "esphome/core/log.h"
 #include "iec61107_component.h"
 
@@ -193,7 +194,7 @@ void Iec61107Component::do_wait_device(uart::UARTDevice *serial, int next_state,
 
 void Iec61107Component::do_wait_reading_mode(uart::UARTDevice *serial, int next_state) {
   no_data_ticks++;
-  if (no_data_ticks >= 100) {
+  if (no_data_ticks >= 150) {
     ESP_LOGE(TAG, "No answer within 100 ticks");
     state = 99;
   } else {
@@ -243,33 +244,33 @@ void Iec61107Component::do_wait_reading_mode(uart::UARTDevice *serial, int next_
               std::vector<std::string> t_parts;
               split(date_s, '.', d_parts);
               split(time_s, ':', t_parts);
-              time_t now = time(0);
+              time_t now = ::time(nullptr);
 
-              struct tm tm_now;
-              struct tm tm_dev;
-              localtime_r(&now, &tm_now);
-              localtime_r(&now, &tm_dev);
+              auto t_now = ESPTime::from_epoch_local(now);
+              auto t_dev = ESPTime::from_epoch_local(now);
 
-              tm_dev.tm_year = std::stoi(d_parts[3]) + 100;
-              tm_dev.tm_mon = std::stoi(d_parts[2]) - 1;
-              tm_dev.tm_mday = std::stoi(d_parts[1]);
-              tm_dev.tm_wday = std::stoi(d_parts[0]);
-              tm_dev.tm_hour = std::stoi(t_parts[0]);
-              tm_dev.tm_min = std::stoi(t_parts[1]);
-              tm_dev.tm_sec = std::stoi(t_parts[2]);
+              t_dev.year = std::stoi(d_parts[3]) + 2000;
+              t_dev.month = std::stoi(d_parts[2]);
+              t_dev.day_of_month = std::stoi(d_parts[1]);
+              t_dev.day_of_week = std::stoi(d_parts[0]) + 1;
+              t_dev.hour = std::stoi(t_parts[0]);
+              t_dev.minute = std::stoi(t_parts[1]);
+              t_dev.second = std::stoi(t_parts[2]);
+              t_dev.recalc_timestamp_local();
 
-              set_device_date(&tm_dev);
+              set_device_date(&t_dev);
 
-              time_t dev = mktime(&tm_dev);
-              int diff = now - dev;
+              int diff = t_now.timestamp - t_dev.timestamp;
 
               if (datetime_diff_sensor_) {
                 datetime_diff_sensor_->publish_state(diff);
               }
               if (datetime_text_sensor_) {
-                char strftime_buf[30];
-                strftime(strftime_buf, sizeof(strftime_buf), "%Y-%m-%dT%H:%M:%S%z", &tm_dev);
-                datetime_text_sensor_->publish_state(strftime_buf);
+                auto dt = t_dev.strftime("%Y-%m-%dT%H:%M:%S");
+                auto sec = ESPTime::timezone_offset();
+                int h = sec / 3600;
+                int m = (sec % 3600) / 60;
+                datetime_text_sensor_->publish_state(std::format("{}{}{:02}{:02}", dt, sec >= 0 ? "+" : "-", h, m));
               }
             }
             for (const MetricSensor &metric : metrics_) {
@@ -499,7 +500,7 @@ void Iec61107Component::log_string(uint8_t *bytes, int len, int width) {
         }
       }
     }
-    ESP_LOGD(TAG, "%s", res.c_str());
+    ESP_LOGV(TAG, "%s", res.c_str());
   }
 }
 
