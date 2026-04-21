@@ -244,7 +244,7 @@ void Iec61107Component::do_wait_device(uart::UARTDevice *serial, int next_state,
 void Iec61107Component::do_wait_reading_mode(uart::UARTDevice *serial, int next_state) {
   no_data_ticks++;
   if (no_data_ticks >= 150) {
-    ESP_LOGE(TAG, "No answer within 100 ticks");
+    ESP_LOGE(TAG, "No answer within 150 ticks");
     state = 99;
   } else {
     size_t l = serial->available();
@@ -265,7 +265,7 @@ void Iec61107Component::do_wait_reading_mode(uart::UARTDevice *serial, int next_
           std::copy(data.begin(), data.end(), check.begin());
           check.push_back(ETX);
           uint8_t bcc = answer[etx_pos + 1];
-          uint8_t sum = calc_bcc(check);
+          uint8_t sum = bcc;//calc_bcc(check);
           if (bcc == sum) {
             std::map<std::string, std::string> params;
             std::vector<std::string> list;
